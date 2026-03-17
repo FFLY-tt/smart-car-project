@@ -14,6 +14,7 @@ import math
 import threading
 import random
 from gazebo_msgs.srv import SetEntityState
+from core.base_controller import BaseController
 
 class AutonomousCarEnv(gym.Env):
     def __init__(self):
@@ -41,6 +42,7 @@ class AutonomousCarEnv(gym.Env):
         self.robot_name = 'turtlebot3_waffle_pi'  # 默认名，将被动态覆盖
         self.car_x = 0.2  
         self.car_y = 0.0
+        self.car_yaw = 0.0  # 【新增】小车的航向角 (弧度)
         self.pedestrian_x = 100.0 
         self.pedestrian_y = 100.0
         self.barrel_x = 2.0       
@@ -54,6 +56,8 @@ class AutonomousCarEnv(gym.Env):
         self.max_steps = 200      # 20秒物理时间跑完 5 米
         self.episode_reward = 0.0 # 实时计分板
         
+        # 【新增】：实例化底盘物理控制器
+        self.base_controller = BaseController(k_y=0.5, k_yaw=1.0)        
         # --- 3. 强化学习空间定义 ---
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         # 观察空间同步升级为 (128, 128, 3) 格式，SB3 会自动适配处理
@@ -70,6 +74,12 @@ class AutonomousCarEnv(gym.Env):
     def odom_callback(self, msg):
         self.car_x = msg.pose.pose.position.x
         self.car_y = msg.pose.pose.position.y
+        
+        # 【新增】：从四元数 (Quaternion) 中解算偏航角 (Yaw)
+        q = msg.pose.pose.orientation
+        siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+        self.car_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     def image_callback(self, msg):
         try:
@@ -140,50 +150,68 @@ class AutonomousCarEnv(gym.Env):
     def step(self, action):
         self.step_count += 1
         
-        # 映射并发布速度
-        throttle = float(np.clip(action[0], -1.0, 1.0) + 1.0) / 2.0 * 0.4
-        steering = float(np.clip(action[1], -1.0, 1.0)) * 1.0
+        # --- 1. 获取当前环境的绝对物理距离 ---
+        dist_barrel = math.hypot(self.car_x - self.barrel_x, self.car_y - self.barrel_y)
+        dist_pedestrian = math.hypot(self.car_x - self.pedestrian_x, self.car_y - self.pedestrian_y)
+
+        # --- 2. 小脑：获取基础物理先验动作 (Base Action) ---
+        v_base, theta_base = self.base_controller.get_base_action(self.car_y, self.car_yaw, dist_barrel, dist_pedestrian)
+        
+        # --- 3. 大脑：解析 RL 神经网络输出的残差微调 (Residuals) ---
+        # 动作空间依然是 [-1, 1]，但现在代表的是“修正幅度”
+        # RL 对速度的微调权限被限制在 [-0.1, 0.1] m/s，主导权在 ACC
+        delta_v = float(np.clip(action[0], -1.0, 1.0)) * 0.1
+        # RL 对方向盘的微调权限高达 [-1.2, 1.2] rad/s，允许它在危急时刻强行打死方向盘避障
+        delta_theta = float(np.clip(action[1], -1.0, 1.0)) * 1.2
+        # delta_theta = 0.0 debug
+
+        
+        # --- 4. 融合与物理截断 (Fusion) ---
+        # 最终速度 = 基础速度 + RL微调 (不允许倒车，最高不超 0.4)
+        final_throttle = float(np.clip(v_base + delta_v, 0.0, 0.4))
+        # 最终方向 = 基础PID修正 + RL避障转向
+        final_steering = float(np.clip(theta_base + delta_theta, -1.5, 1.5))
         
         twist = Twist()
-        twist.linear.x = throttle
-        twist.angular.z = steering
+        twist.linear.x = final_throttle
+        twist.angular.z = final_steering
         self.cmd_vel_pub.publish(twist)
         
-        # 同步 Gazebo 的 3倍速，Python 休眠时间降至 0.033
         time.sleep(0.033)
         
+        # --- 5. 状态结算与奖励 ---
         done = False
         truncated = False
         reward = 0.0
         
         delta_x = self.car_x - self.prev_x
         self.prev_x = self.car_x
-        
-        dist_barrel = math.hypot(self.car_x - self.barrel_x, self.car_y - self.barrel_y)
-        dist_pedestrian = math.hypot(self.car_x - self.pedestrian_x, self.car_y - self.pedestrian_y)
 
-        # --- 终极奖励塑形 ---
+        # 主线任务：向前推进给分
         reward += delta_x * 50.0  
+        # 惩罚项 1：偏离车道中心
         reward -= abs(self.car_y) * 0.5
-        reward -= abs(steering) * 0.2
+        # 惩罚项 2：【重要】现在我们惩罚的是 delta_theta (RL 的瞎干预)，而不是最终的 steering。
+        # 逼迫 RL 只有在遇到障碍时才出力，没事别乱动方向盘
+        reward -= abs(delta_theta) * 0.3
         
         self.episode_reward += reward
 
-        # --- 致命判定 (引入长方形车身体积考量，防穿模) ---
+        # 致命判定
         if self.car_x > 4.8:
-            print(f"🏆 【捷报】到达终点！总得分: {self.episode_reward:.2f}")
+            print(f"🏆 到达终点！总得分: {self.episode_reward:.2f}")
             reward += 100.0
             done = True
         elif abs(self.car_y) > 0.6:
-            print(f"💀 【悲报】压线坠崖 (Y={self.car_y:.2f}) | 总得分: {self.episode_reward:.2f}")
+            print(f"💀 冲出公路! (Y={self.car_y:.2f}) | 总得分: {self.episode_reward:.2f}")
             reward -= 100.0
             done = True
         elif dist_barrel < 0.30:  
-            print(f"💥 【悲报】撞击静态铁桶！(距离: {dist_barrel:.2f}) | 总得分: {self.episode_reward:.2f}")
+            print(f"💥 撞击静态铁桶！(距离: {dist_barrel:.2f}) | 总得分: {self.episode_reward:.2f}")
             reward -= 100.0
             done = True
         elif dist_pedestrian < 0.35: 
-            print(f"🩸 【悲报】撞击动态行人！(距离: {dist_pedestrian:.2f}) | 总得分: {self.episode_reward:.2f}")
+            print(f"🩸 撞击动态行人！(距离: {dist_pedestrian:.2f}) | 总得分: {self.episode_reward:.2f}")
             reward -= 100.0
             done = True
             

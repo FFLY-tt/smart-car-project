@@ -57,3 +57,12 @@ python3 scripts/train.py;
 exec bash"
 
 echo "✅ 【系统】所有核心节点已成功发射！请在弹出的终端标签页中监控运行状态。"
+
+# -------------------------------------------------------------------------
+# Tab 5: open the monitor dashboard
+# -------------------------------------------------------------------------
+gnome-terminal --tab --title="Monitor dashboard" -- bash -c "
+cd ${PROJECT_ROOT};
+tensorboard --logdir=./logs/tensorboard/;
+echo '【阶段 5】Open the monitor dashboard..., please vist http://localhost:6006';
+exec bash"

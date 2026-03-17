@@ -1,5 +1,12 @@
-*.zip
-*.tar.gz
+# Python 缓存
 __pycache__/
-.vscode
-logs
+*.py[cod]
+
+
+# Ubuntu/Linux 系统文件
+.DS_Store
+.directory
+
+*.zip
+.vscode/
+logs/

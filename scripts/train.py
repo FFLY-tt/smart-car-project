@@ -35,7 +35,8 @@ def main():
                 env, 
                 verbose=1, 
                 buffer_size=10000, 
-                learning_starts=100) # 先随机乱开 100 步收集一点初始数据
+                learning_starts=100, # 先随机乱开 100 步收集一点初始数据
+                tensorboard_log="./logs/tensorboard/")  # 开启可视化日志
 
     # 4. 设置自动保存机制
     # 每训练 2000 步，自动保存一次脑电波 (权重模型)，防止突然断电白跑
