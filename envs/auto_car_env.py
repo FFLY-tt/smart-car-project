@@ -187,36 +187,43 @@ class AutonomousCarEnv(gym.Env):
         delta_x = self.car_x - self.prev_x
         self.prev_x = self.car_x
 
-        # 主线任务：向前推进给分
-        reward += delta_x * 50.0  
-        # 惩罚项 1：偏离车道中心
-        reward -= abs(self.car_y) * 0.5
-        # 惩罚项 2：【重要】现在我们惩罚的是 delta_theta (RL 的瞎干预)，而不是最终的 steering。
-        # 逼迫 RL 只有在遇到障碍时才出力，没事别乱动方向盘
-        reward -= abs(delta_theta) * 0.3
-        
+        # 1. 建立基础奖金池：只要车在往前走，就能拿到钱 (正向诱导)
+        base_income = delta_x * 50.0
+
+        # 2. 计算行为折扣 (机会成本)：偏离中线和乱动方向盘，会让你少赚钱
+        y_penalty = abs(self.car_y) * 1.0  # 加大对偏离的敏感度
+        steer_penalty = abs(delta_theta) * 0.5  # 保持对乱打方向的克制
+        discount = y_penalty + steer_penalty
+
+        # 3. 结算本步常规奖励：最多扣到 0，保证活着往前走绝对不亏！(信息不再坍塌)
+        step_reward = max(0.0, base_income - discount)
+
+        # 4. 生存低保：只要活着没撞，哪怕停在原地，也给极微小的正分，鼓励苟活
+        step_reward += 0.01
+
+        reward += step_reward
         self.episode_reward += reward
 
-        # 致命判定
+        # 5. 致命红线 (维持巨额惩罚与奖励，确立世界观底线)
         if self.car_x > 4.8:
-            print(f"🏆 到达终点！总得分: {self.episode_reward:.2f}")
+            print(f"🏆 【捷报】到达终点！总得分: {self.episode_reward:.2f}")
             reward += 100.0
             done = True
         elif abs(self.car_y) > 0.6:
-            print(f"💀 冲出公路! (Y={self.car_y:.2f}) | 总得分: {self.episode_reward:.2f}")
+            print(f"💀 【悲报】压线坠崖 (Y={self.car_y:.2f}) | 总得分: {self.episode_reward:.2f}")
             reward -= 100.0
             done = True
-        elif dist_barrel < 0.30:  
-            print(f"💥 撞击静态铁桶！(距离: {dist_barrel:.2f}) | 总得分: {self.episode_reward:.2f}")
+        elif dist_barrel < 0.30:
+            print(f"💥 【悲报】撞击静态铁桶！(距离: {dist_barrel:.2f}) | 总得分: {self.episode_reward:.2f}")
             reward -= 100.0
             done = True
-        elif dist_pedestrian < 0.35: 
-            print(f"🩸 撞击动态行人！(距离: {dist_pedestrian:.2f}) | 总得分: {self.episode_reward:.2f}")
+        elif dist_pedestrian < 0.35:
+            print(f"🩸 【悲报】撞击动态行人！(距离: {dist_pedestrian:.2f}) | 总得分: {self.episode_reward:.2f}")
             reward -= 100.0
             done = True
-            
+
         if self.step_count >= self.max_steps and not done:
-            print(f"⏳ 【提示】20秒超时，强制重置。| 总得分: {self.episode_reward:.2f}")
+            print(f"⏳ 【提示】超时重置。| 总得分: {self.episode_reward:.2f}")
             truncated = True
             
         obs = self.current_image
