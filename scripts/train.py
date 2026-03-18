@@ -30,12 +30,16 @@ def main():
     # "CnnPolicy" 告诉大脑：你的眼睛看到的是图片，请自动启用卷积神经网络。
     # verbose=1 会在终端里打印训练的详细损失率和得分。
     # buffer_size 是经验回放池，因为我们只做轻量级测试，先设为 10000。
+    # 将 buffer_size 从 10000 提升至 50000 (如果服务器内存足够大，甚至可以设为 100000)
+    # 增加 optimize_memory_usage=True 以防止服务器内存爆满
     print("【系统】正在唤醒 SAC 深度强化学习神经网络...")
     model = SAC("CnnPolicy", 
-                env, 
+                env,
+                learning_rate=1e-4,  # 手动强制注入极其稳健的学习率
                 verbose=1, 
-                buffer_size=10000, 
-                learning_starts=100, # 先随机乱开 100 步收集一点初始数据
+                buffer_size=50000,
+                optimize_memory_usage=True,
+                learning_starts=100,  # 先随机乱开 100 步收集一点初始数据
                 tensorboard_log="./logs/tensorboard/")  # 开启可视化日志
 
     # 4. 设置自动保存机制
@@ -46,7 +50,7 @@ def main():
     # total_timesteps = 50000 意味着小车要在物理世界里做 5 万次决策
     print("🔥 【系统】点火成功！开始自动化训练循环...")
     try:
-        model.learn(total_timesteps=50000, callback=checkpoint_callback)
+        model.learn(total_timesteps=500000, callback=checkpoint_callback, log_interval=1)
     except KeyboardInterrupt:
         print("\n【系统】接收到手动中断信号，正在提前结束训练...")
     finally:
