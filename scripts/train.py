@@ -2,6 +2,7 @@ import rclpy
 import torch
 from stable_baselines3 import SAC
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage, VecFrameStack
 from stable_baselines3.common.callbacks import CheckpointCallback
 # 导入你刚刚辛辛苦苦写好的环境！
 import sys
@@ -19,12 +20,28 @@ def main():
     
     # 1. 实例化你的定制环境
     env = AutonomousCarEnv()
-    
-    # 2. 环境健康检查 (极其重要！)
+
+    # 2.环境健康检查
     # SB3 会用极其严苛的标准，检查你的 reset() 和 step() 输出的格式对不对
     print("【系统】正在对环境进行 Gymnasium 标准化质检...")
     check_env(env)
     print("【系统】质检通过！环境接口完美兼容。")
+
+    # 3. 向量化包装 (Stable Baselines3 的标准要求)
+    env = DummyVecEnv([lambda: env])
+
+    # 4. 【核心注入：短时记忆】
+    # 将过去的 4 帧画面堆叠在一起。
+    # 物理意义：AI 不再只看一张图，而是看一部“微型动画”。
+    # 它能通过前 3 帧铁桶的残影，记住盲区里到底有没有东西！
+    env = VecFrameStack(env, n_stack=4)
+
+    # 5. 通道转换 (适配 PyTorch)
+    # 注意：这一步必须放在 FrameStack 之后！
+    # 它会将堆叠后的 (128, 128, 12通道) 转换为 PyTorch 需要的 (12通道, 128, 128)
+    env = VecTransposeImage(env)
+
+
 
     # 3. 实例化 SAC 算法大脑
     # "CnnPolicy" 告诉大脑：你的眼睛看到的是图片，请自动启用卷积神经网络。
@@ -38,7 +55,6 @@ def main():
                 learning_rate=1e-4,  # 手动强制注入极其稳健的学习率
                 verbose=1, 
                 buffer_size=50000,
-                optimize_memory_usage=True,
                 learning_starts=100,  # 先随机乱开 100 步收集一点初始数据
                 tensorboard_log="./logs/tensorboard/")  # 开启可视化日志
 
