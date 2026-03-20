@@ -2,6 +2,7 @@ import rclpy
 import torch
 from stable_baselines3 import SAC
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage, VecFrameStack
 from stable_baselines3.common.callbacks import CheckpointCallback
 # 导入你刚刚辛辛苦苦写好的环境！
@@ -27,6 +28,7 @@ def main():
     check_env(env)
     print("【系统】质检通过！环境接口完美兼容。")
 
+    env = Monitor(env)  # 封装之前加上监控
     # 3. 向量化包装 (Stable Baselines3 的标准要求)
     env = DummyVecEnv([lambda: env])
 
