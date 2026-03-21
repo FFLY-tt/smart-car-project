@@ -21,7 +21,7 @@ class PedestrianMover(Node):
         y_position = 0.4 * math.cos(0.9 * current_time)
         request = SetEntityState.Request()
         request.state.name = 'dynamic_pedestrian'
-        request.state.pose.position.x = 4.0  
+        request.state.pose.position.x = 4.8  
         request.state.pose.position.y = y_position
         
         # 【核心修改 2】：必须修复 Z 坐标，让 0.175 米高的小人双脚沾地！

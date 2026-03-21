@@ -36,16 +36,17 @@ class BEVCarEnv(gym.Env):
         self.robot_name = 'turtlebot3_waffle_pi'
         self.car_x, self.car_y, self.car_yaw = 0.2, 0.0, 0.0
         self.pedestrian_x, self.pedestrian_y = 100.0, 100.0
-        self.barrel_x, self.barrel_y = 2.0, 0.0
+        self.barrel_x, self.barrel_y = 2.4, 0.0
         self.car_z = 0.05
         # 物理状态记忆与礼让机制
         self.prev_x = 0.2
         self.prev_omega = 0.0 
         self.yield_timer = 0
         self.step_count = 0
-        self.max_steps = 1500      
+        self.max_steps = 1800      
         self.episode_reward = 0.0 
-        
+        # 新增：用于记录雷达扫到的最近物理实体距离
+        self.min_obstacle_dist = 3.0
         # 👑 【核心降维】：当前状态变为 64x64 的单通道黑白 BEV 图像
         self.current_bev = np.zeros((64, 64, 1), dtype=np.uint8)
         
@@ -106,6 +107,13 @@ class BEVCarEnv(gym.Env):
                     
         self.current_bev = bev_image
 
+        # 新增：提取有效的最近雷达探测距离，用于真实的物理碰撞检测
+        valid_ranges = [r for r in ranges if not math.isinf(r) and not math.isnan(r) and r > 0.12]
+        if valid_ranges:
+            self.min_obstacle_dist = min(valid_ranges)
+        else:
+            self.min_obstacle_dist = 3.0
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.cmd_vel_pub.publish(Twist())
@@ -122,7 +130,7 @@ class BEVCarEnv(gym.Env):
         random_barrel_y = random.uniform(-0.1, 0.1) 
         req_barrel = SetEntityState.Request()
         req_barrel.state.name = 'static_barrel'
-        req_barrel.state.pose.position.x = 2.0  
+        req_barrel.state.pose.position.x = 2.4  
         req_barrel.state.pose.position.y = random_barrel_y
         req_barrel.state.pose.position.z = 0.035
         req_barrel.state.pose.orientation.w = 1.0
@@ -180,12 +188,14 @@ class BEVCarEnv(gym.Env):
         base_income = delta_x * 100.0
 
         # 极其严厉的惩罚：防压线、防乱打方向、防鬼畜摇头
-        discount = (abs(self.car_y) * 2.0) + (abs(omega_final) * 0.5) + (jerk * 1.0)
+        discount = (abs(omega_final) * 0.5) + (jerk * 1.0)
         step_reward = base_income - discount    
 
-        # 防作弊时间税,只要没有实质性往前走，每步倒扣分
-        if delta_x < 0.002:
-            step_reward -= 0.5   
+        # 3.核心防作弊：防掉头倒退与停滞税
+        if delta_x < 0:
+            step_reward -= 5.0  # 严厉惩罚：绝对不允许往后退
+        elif delta_x < 0.002:
+            step_reward -= 0.5  # 停滞税：不许原地转圈
 
         # 👑 礼让法则与防老赖时间锁
         if dist_pedestrian < 1.0:
@@ -202,14 +212,20 @@ class BEVCarEnv(gym.Env):
         self.episode_reward += reward
 
         # 致命红线
-        if self.car_x > 4.8:
+        if self.car_x > 5.8:
             print(f"🏆 【捷报】到达终点！总得分: {self.episode_reward:.2f}")
             reward += 100.0
             done = True
-        elif abs(self.car_y) > 0.6:
+        elif abs(self.car_yaw) > 1.57: 
+            # 👑 绝对禁止恶意掉头：车头偏转超过 90 度（1.57弧度），直接击毙！
             reward -= 100.0
             done = True
-        elif dist_barrel < 0.30 or dist_pedestrian < 0.35:
+        elif abs(self.car_y) > 2.9: 
+            # 👑 道路已经拓宽到 3.0，放宽坐标越界线到 2.9 (留 0.1 作为缓冲)
+            reward -= 100.0
+            done = True
+        elif self.min_obstacle_dist < 0.22 or dist_barrel < 0.30 or dist_pedestrian < 0.35:
+            # 真正的物理碰撞：雷达扫到实体
             reward -= 100.0
             done = True
 

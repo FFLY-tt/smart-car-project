@@ -28,7 +28,7 @@ def main():
     checkpoint_callback = CheckpointCallback(
         save_freq=20000, 
         save_path='./logs/checkpoints/', 
-        name_prefix='sac_bev_rebuild'
+        name_prefix='sac_bev_finetune'
     )
 
     model = SAC("CnnPolicy", 

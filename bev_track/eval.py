@@ -22,7 +22,7 @@ def main():
     env = VecTransposeImage(env)
     
     # 加载初代极品脑电波
-    model_path = "./logs/checkpoints/sac_bev_rebuild_180000_steps.zip"
+    model_path = "./logs/checkpoints/sac_bev_rebuild_140000_steps.zip"
     
     if not os.path.exists(model_path):
         print(f"🚨 找不到模型文件 {model_path}！请确认路径。")
