@@ -53,7 +53,7 @@ gnome-terminal --tab --title="🧠 RL Train" -- bash -c "
 source /opt/ros/humble/setup.bash;
 cd ${PROJECT_ROOT};
 echo '【阶段 4】正在连接强化学习神经网络...';
-python3 scripts/train.py;
+python3 vision_track/train_vision.py;
 exec bash"
 
 echo "✅ 【系统】所有核心节点已成功发射！请在弹出的终端标签页中监控运行状态。"

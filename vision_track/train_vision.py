@@ -1,4 +1,3 @@
-import rclpy
 import torch
 from stable_baselines3 import SAC
 from stable_baselines3.common.env_checker import check_env
@@ -11,7 +10,7 @@ import os
 # 将项目根目录临时加入系统路径，确保能跨文件夹导入
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from envs.auto_car_env import AutonomousCarEnv
+from vision_track.auto_car_env_vision import AutonomousCarEnv
 def main():
     print(f"【系统硬件自检】当前 PyTorch 是否使用外星人 GPU: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
@@ -58,7 +57,7 @@ def main():
                 verbose=1, 
                 buffer_size=50000,
                 learning_starts=100,  # 先随机乱开 100 步收集一点初始数据
-                tensorboard_log="./logs/tensorboard/")  # 开启可视化日志
+                tensorboard_log="./logs/tensorboard/vision_run/")  # 开启可视化日志
 
     # 4. 设置自动保存机制
     # 每训练 2000 步，自动保存一次脑电波 (权重模型)，防止突然断电白跑
