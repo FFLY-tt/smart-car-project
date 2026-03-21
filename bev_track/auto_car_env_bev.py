@@ -43,7 +43,7 @@ class BEVCarEnv(gym.Env):
         self.prev_omega = 0.0 
         self.yield_timer = 0
         self.step_count = 0
-        self.max_steps = 200      
+        self.max_steps = 1500      
         self.episode_reward = 0.0 
         
         # 👑 【核心降维】：当前状态变为 64x64 的单通道黑白 BEV 图像
