@@ -27,17 +27,17 @@ class BEVCarEnv(gym.Env):
         while not self.set_state_client.wait_for_service(timeout_sec=1.0):
             self.node.get_logger().info('等待 Gazebo 传送服务启动...')
         
-        self.node.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.node.create_subscription(ModelStates, '/gazebo/model_states', self.models_callback, 10)
+        self.node.create_subscription(Odometry, '/odom', self.odom_callback, 30)
+        self.node.create_subscription(ModelStates, '/gazebo/model_states', self.models_callback, 30)
         # 👑 【核心】：订阅激光雷达，放弃臃肿的摄像头图像
-        self.node.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+        self.node.create_subscription(LaserScan, '/scan', self.scan_callback, 30)
         
         # --- 2. 状态变量 ---
         self.robot_name = 'turtlebot3_waffle_pi'
         self.car_x, self.car_y, self.car_yaw = 0.2, 0.0, 0.0
         self.pedestrian_x, self.pedestrian_y = 100.0, 100.0
         self.barrel_x, self.barrel_y = 2.0, 0.0
-        
+        self.car_z = 0.05
         # 物理状态记忆与礼让机制
         self.prev_x = 0.2
         self.prev_omega = 0.0 
@@ -67,6 +67,8 @@ class BEVCarEnv(gym.Env):
     def odom_callback(self, msg):
         self.car_x = msg.pose.pose.position.x
         self.car_y = msg.pose.pose.position.y
+        # 【新增探针】：读取高度，用来判断是否掉进地底虚空
+        self.car_z = msg.pose.pose.position.z
         q = msg.pose.pose.orientation
         self.car_yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
 
@@ -127,7 +129,7 @@ class BEVCarEnv(gym.Env):
         self.set_state_client.call_async(req_barrel)
         self.barrel_y = random_barrel_y
         
-        time.sleep(1.0) 
+        time.sleep(0.2) 
         self.car_x, self.car_y, self.prev_x = 0.2, 0.0, 0.2
         self.prev_omega = 0.0
         self.yield_timer = 0
@@ -152,7 +154,7 @@ class BEVCarEnv(gym.Env):
         twist = Twist()
         twist.linear.x, twist.angular.z = v_final, omega_final
         self.cmd_vel_pub.publish(twist)
-        time.sleep(0.033)
+        time.sleep(0.002)
         
         # --- 2. 状态结算与底层经济学逻辑 ---
         done = False
@@ -162,6 +164,19 @@ class BEVCarEnv(gym.Env):
         delta_x = self.car_x - self.prev_x
         self.prev_x = self.car_x
 
+        # 🚨 【物理引擎崩溃监控网】🚨
+        # 1. 穿模监控：正常 Z 轴在 0.05 左右。如果掉到 -0.1 以下，绝对是穿模掉进底板了！
+        if self.car_z < -0.1:
+            self.node.get_logger().error(f"🚨 [FATAL] 物理坍塌：小车坠入虚空 (Z={self.car_z:.2f})！请降低引擎倍速！")
+            reward -= 100.0
+            return self.current_bev, reward, True, False, {}
+            
+        # 2. 瞬移监控：在 0.002 秒内，车最多走几毫米。如果 delta_x 超过 0.5 米，绝对是坐标瞬移 Bug！
+        if abs(delta_x) > 0.5:
+            self.node.get_logger().error(f"🚨 [FATAL] 坐标撕裂：发生空间瞬移 (delta_x={delta_x:.2f})！物理步长断层！")
+            reward -= 100.0
+            return self.current_bev, reward, True, False, {}
+        
         base_income = delta_x * 50.0
         
         # 极其严厉的惩罚：防压线、防乱打方向、防鬼畜摇头

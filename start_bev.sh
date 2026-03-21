@@ -5,9 +5,11 @@ echo "🚀 【系统】正在启动 BEV 降维终极架构仿真环境..."
 # Tab 1: Gazebo
 gnome-terminal --tab --title="🌍 Gazebo World" -- bash -c "
 source /opt/ros/humble/setup.bash;
-ros2 launch gazebo_ros gazebo.launch.py world:=${PROJECT_ROOT}/worlds/custom_highway.world;
+echo '【系统】正在以纯净无头模式 (gzserver) 启动引擎...';
+# 👑 【核心修复】：将 gazebo.launch.py 替换为 gzserver.launch.py，并且去掉多余的 gui 参数
+ros2 launch gazebo_ros gzserver.launch.py world:=${PROJECT_ROOT}/worlds/custom_highway.world;
 exec bash"
-sleep 5
+sleep 8
 
 # Tab 2: 小车
 gnome-terminal --tab --title="🚗 Spawn Car" -- bash -c "

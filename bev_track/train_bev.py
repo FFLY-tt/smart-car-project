@@ -34,13 +34,16 @@ def main():
 
     print("【系统】正在唤醒带有门控注意力的 SAC 大脑...")
     model = SAC("CnnPolicy", 
-                env,
-                policy_kwargs=policy_kwargs, 
-                learning_rate=3e-4,  # 状态降维后，可以适当提高学习率加速收敛
-                verbose=1, 
-                buffer_size=50000,
-                learning_starts=500, 
-                tensorboard_log="./logs/tensorboard/") # 指向公共日志父目录
+                    env,
+                    policy_kwargs=policy_kwargs, 
+                    learning_rate=3e-4,  
+                    buffer_size=100000,   # 池子加大，存更多好数据
+                    learning_starts=500,
+                    batch_size=256,       # 【提速核弹】：每次抽取 512 条经验同时塞进 GPU 训练 (默认是256)
+                    train_freq=4,         # 每走 1 步就训练一次
+                    gradient_steps=1,     # 【贪婪模式】：每走 1 步，强行更新 2 次神经网络权重！加速榨取经验！
+                    verbose=1, 
+                    tensorboard_log="./logs/tensorboard/")
 
     checkpoint_callback = CheckpointCallback(save_freq=2000, save_path='./logs/', name_prefix='sac_bev_model')
 
