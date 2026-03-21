@@ -14,50 +14,45 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from bev_track.auto_car_env_bev import BEVCarEnv
 from bev_track.gap_sac_model import GAPExtractor
 
-
 def main():
     print(f"【系统自检】PyTorch CUDA: {torch.cuda.is_available()}")
     print("【系统】正在初始化 BEV + GAP-SAC 终极架构...")
-
+    
     env = BEVCarEnv()
     check_env(env)
     env = Monitor(env)
-
+    
     env = DummyVecEnv([lambda: env])
     env = VecFrameStack(env, n_stack=4)
-    # PyTorch 需要 (Channel, H, W)，此工具会自动转换
     env = VecTransposeImage(env)
 
-    # 👑 【核心注入】：替换 SB3 默认网络，注入你的门控注意力网络
+    # 将你的 GAP 模块作为自定义网络插入
     policy_kwargs = dict(
         features_extractor_class=GAPExtractor,
         features_extractor_kwargs=dict(features_dim=128),
     )
 
     print("【系统】正在唤醒带有门控注意力的 SAC 大脑...")
-    model = SAC("CnnPolicy",
+    model = SAC("CnnPolicy", 
                 env,
-                policy_kwargs=policy_kwargs,  # 注入！
-                learning_rate=1e-4,
-                verbose=1,
+                policy_kwargs=policy_kwargs, 
+                learning_rate=3e-4,  # 状态降维后，可以适当提高学习率加速收敛
+                verbose=1, 
                 buffer_size=50000,
-                learning_starts=100,
-                tensorboard_log="./logs/tensorboard/bev_gap_run/")  # 独立的日志目录
+                learning_starts=500, 
+                tensorboard_log="./logs/tensorboard/") # 指向公共日志父目录
 
-    checkpoint_callback = CheckpointCallback(save_freq=2000, save_path='./logs/', name_prefix='gap_sac_bev')
+    checkpoint_callback = CheckpointCallback(save_freq=2000, save_path='./logs/', name_prefix='sac_bev_model')
 
-    print("🔥 【系统】BEV 架构点火成功！开始自动化极速训练...")
+    print("🔥 【系统】BEV 架构点火成功！开始极速训练...")
     try:
-        model.learn(total_timesteps=100000,
-                    callback=checkpoint_callback,
-                    log_interval=1,
-                    tb_log_name="bev_gap_sac")
+        # 明确打上标签，方便在 TensorBoard 里对比碾压纯视觉
+        model.learn(total_timesteps=150000, callback=checkpoint_callback, log_interval=1, tb_log_name="BEV_GAP_SAC")
     except KeyboardInterrupt:
-        print("\n【系统】接收到手动中断信号...")
+        print("\n【系统】手动中断...")
     finally:
-        model.save("gap_sac_bev_final")
+        model.save("sac_bev_final")
         env.close()
-
 
 if __name__ == '__main__':
     main()
