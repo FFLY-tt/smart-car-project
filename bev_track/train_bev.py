@@ -48,7 +48,10 @@ def main():
 
     print("🔥 【系统】BEV 架构点火成功！开始自动化极速训练...")
     try:
-        model.learn(total_timesteps=100000, callback=checkpoint_callback, log_interval=1)
+        model.learn(total_timesteps=100000,
+                    callback=checkpoint_callback,
+                    log_interval=1,
+                    tb_log_name="bev_gap_sac")
     except KeyboardInterrupt:
         print("\n【系统】接收到手动中断信号...")
     finally:

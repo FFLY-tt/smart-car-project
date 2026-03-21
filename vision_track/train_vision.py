@@ -67,7 +67,10 @@ def main():
     # total_timesteps = 50000 意味着小车要在物理世界里做 5 万次决策
     print("🔥 【系统】点火成功！开始自动化训练循环...")
     try:
-        model.learn(total_timesteps=500000, callback=checkpoint_callback, log_interval=1)
+        model.learn(total_timesteps=500000,
+                    callback=checkpoint_callback,
+                    log_interval=1,
+                    tb_log_name="vision_baseline")
     except KeyboardInterrupt:
         print("\n【系统】接收到手动中断信号，正在提前结束训练...")
     finally:
