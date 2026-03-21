@@ -177,12 +177,16 @@ class BEVCarEnv(gym.Env):
             reward -= 100.0
             return self.current_bev, reward, True, False, {}
         
-        base_income = delta_x * 50.0
-        
+        base_income = delta_x * 100.0
+
         # 极其严厉的惩罚：防压线、防乱打方向、防鬼畜摇头
-        discount = (abs(self.car_y) * 1.0) + (abs(omega_final) * 0.5) + (jerk * 2.0)
-        step_reward = max(0.0, base_income - discount)
-        
+        discount = (abs(self.car_y) * 2.0) + (abs(omega_final) * 0.5) + (jerk * 1.0)
+        step_reward = base_income - discount    
+
+        # 防作弊时间税,只要没有实质性往前走，每步倒扣分
+        if delta_x < 0.002:
+            step_reward -= 0.5   
+
         # 👑 礼让法则与防老赖时间锁
         if dist_pedestrian < 1.0:
             if v_final < 0.05:
@@ -194,7 +198,7 @@ class BEVCarEnv(gym.Env):
         else:
             self.yield_timer = 0 # 行人离开，重置计时器
 
-        reward += (step_reward + 0.01)
+        reward += step_reward
         self.episode_reward += reward
 
         # 致命红线
