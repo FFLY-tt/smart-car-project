@@ -34,3 +34,4 @@ Group 8 Ontario Tech University
 * Hiranmayee Brundavanam
 
 Repository Link: https://github.com/FFLY-tt/smart-car-project
+Showcase: https://www.canva.com/design/DAHE0vvwnk4/hC9EfcYFmYYFw1Y0jop90g/edit?ui=eyJBIjp7fX0
